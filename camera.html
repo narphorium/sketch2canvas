@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Processor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #videoContainer, #imageContainer {
+            margin-top: 20px;
+            width: 100%;
+        }
+        #captureButton {
+            display: none;
+            margin-top: 10px;
+        }
+        #image {
+            max-width: 100%;
+            height: auto;
+        }
+        canvas {
+            display: none;
+        }
+        #errorMessage {
+            color: red;
+            margin-top: 10px;
+        }
+        #statusMessage {
+            color: green;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Image Processor</h1>
+    <input type="file" id="fileInput" accept="image/*">
+    <button id="webcamButton">Use Webcam</button>
+    <button id="captureButton">Capture Image</button>
+    <div id="statusMessage"></div>
+    <div id="errorMessage"></div>
+    <div id="videoContainer">
+        <video id="video" width="100%" autoplay></video>
+    </div>
+    <div id="imageContainer">
+        <img id="image" alt="Processed Image">
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const webcamButton = document.getElementById('webcamButton');
+        const captureButton = document.getElementById('captureButton');
+        const video = document.getElementById('video');
+        const image = document.getElementById('image');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const errorMessage = document.getElementById('errorMessage');
+        const statusMessage = document.getElementById('statusMessage');
+
+        let stream;
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    image.src = event.target.result;
+                    image.onload = processImage;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        webcamButton.addEventListener('click', requestCameraPermission);
+
+        async function requestCameraPermission() {
+            try {
+                statusMessage.textContent = "Requesting camera permission...";
+                const permission = await navigator.permissions.query({ name: 'camera' });
+                
+                if (permission.state === 'granted') {
+                    startWebcam();
+                } else if (permission.state === 'prompt') {
+                    statusMessage.textContent = "Please grant camera permission in the browser prompt.";
+                    startWebcam();
+                } else {
+                    throw new Error("Camera permission denied");
+                }
+            } catch (err) {
+                handleWebcamError(err);
+            }
+        }
+
+        async function startWebcam() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                webcamButton.style.display = 'none';
+                captureButton.style.display = 'inline-block';
+                errorMessage.textContent = '';
+                statusMessage.textContent = "Webcam started successfully!";
+            } catch (err) {
+                handleWebcamError(err);
+            }
+        }
+
+        function handleWebcamError(err) {
+            console.error("Error accessing the webcam:", err);
+            errorMessage.textContent = `Error: ${err.message}. `;
+            if (err.name === 'NotFoundError') {
+                errorMessage.textContent += "No camera found. Please ensure your device has a webcam.";
+            } else if (err.name === 'NotAllowedError') {
+                errorMessage.textContent += "Camera access denied. Please grant permission in your browser settings.";
+            } else {
+                errorMessage.textContent += "Please ensure your device has a webcam and you've granted permission to use it.";
+            }
+            statusMessage.textContent = "";
+        }
+
+        captureButton.addEventListener('click', () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            image.src = canvas.toDataURL('image/png');
+            image.onload = processImage;
+            stopWebcam();
+        });
+
+        function stopWebcam() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+                webcamButton.style.display = 'inline-block';
+                captureButton.style.display = 'none';
+                statusMessage.textContent = "";
+            }
+        }
+
+        function processImage() {
+            canvas.width = image.naturalWidth;
+            canvas.height = image.naturalHeight;
+            ctx.drawImage(image, 0, 0);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                data[i] = avg; // red
+                data[i + 1] = avg; // green
+                data[i + 2] = avg; // blue
+            }
+            ctx.putImageData(imageData, 0, 0);
+            image.src = canvas.toDataURL('image/png');
+        }
+    </script>
+</body>
+</html>

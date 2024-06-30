@@ -1,0 +1,39 @@
+.container {
+	font-family: Arial, sans-serif;
+	max-width: 800px;
+	margin: 0 auto;
+	padding: 20px;
+}
+
+.videoContainer,
+.imageContainer {
+	margin-top: 20px;
+	width: 100%;
+}
+
+.visible {
+	display: block;
+}
+
+.hidden {
+	display: none;
+}
+
+.image {
+	max-width: 100%;
+	height: auto;
+}
+
+.canvas {
+	display: none;
+}
+
+.errorMessage {
+	color: red;
+	margin-top: 10px;
+}
+
+.statusMessage {
+	color: green;
+	margin-top: 10px;
+}
