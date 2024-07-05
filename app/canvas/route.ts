@@ -1,5 +1,6 @@
 import fs from 'fs';
-import { NextRequest, NextResponse } from 'next/server';
+import path from 'path';
+import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 
 const MODEL_NAME = "claude-3-opus-20240229";
@@ -28,36 +29,85 @@ The diagram should be formatted like this:
 	]
 }
 \`\`\``
+
+
+const convertSketchToJSON = async function* (imageData: string, filename: string) {
+  
+  yield { message: 'Processing image...', status: 'running' };
+
+  const user_prompt = 'Create a JSON Canvas. Only output the JSON code.'
+  const msg = await anthropic.messages.create({
+    model: MODEL_NAME,
+    max_tokens: 2048,
+    system: system_prompt,
+    messages: [{ role: "user", content: [
+      { type: "image", source: { type: "base64", media_type: "image/png", data: imageData } },
+      { type: "text", text: user_prompt }]}],
+  });
+  console.log('LLM Response:', msg);
+
+  let json_data = '';
+  if (msg.content.length == 1 && msg.content[0].type == 'text') {
+    json_data = msg.content[0].text;
+  }
+  if (json_data.indexOf('```json\n') >= 0) {
+    json_data = json_data.slice(json_data.indexOf('```json\n') + 8);
+    json_data = json_data.replace('```', '');
+    json_data = json_data.trim();
+  }
+
+  yield { message: 'Saving canvas...', status: 'running' };
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      fs.writeFile(filename, json_data, (err) => {
+        if (err) {
+          console.error(err);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+    yield { message: 'Canvas saved successfully', status: 'success' };
+  } catch (err) {
+    yield { message: 'Error saving canvas', status: 'error' };
+  }
+}
  
 export async function POST(request: NextRequest) {
   const data = await request.json();
-
-  const user_prompt = 'Create a JSON Canvas. Only output the JSON code.'
 
   let image_data = data.imageData;
   if (image_data.startsWith('data:image/png;base64,')) {
     image_data = image_data.replace('data:image/png;base64,', '');
   }
 
-  console.log('image_data:', image_data)
-  
-  const msg = await anthropic.messages.create({
-    model: MODEL_NAME,
-    max_tokens: 2048,
-    system: system_prompt,
-    messages: [{ role: "user", content: [
-      { type: "image", source: { type: "base64", media_type: "image/png", data: image_data } },
-      { type: "text", text: user_prompt }]}],
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        const vaultPath = process.env.OBSIDIAN_VAULT;
+        if (vaultPath == undefined) {
+          throw new Error('OBSIDIAN_VAULT environment variable not set');
+        } else {
+          const outputFilename = path.join(vaultPath, `${data.name}.canvas`);
+          for await (const chunk of convertSketchToJSON(image_data, outputFilename)) {
+            controller.enqueue(encoder.encode(JSON.stringify(chunk) + '\n'));
+          }
+        }
+      } catch (error: any) {
+        controller.enqueue(encoder.encode(JSON.stringify({'message': `Error: ${error.message}`, 'status': 'error'}) + '\n'));
+      } finally {
+        controller.close();
+      }
+    },
   });
-  console.log('LLM Response:', msg);
 
-  fs.writeFile('data.json', JSON.stringify(msg), (err) => {
-    if (err) {
-      console.error(err);
-      return NextResponse.json({ message: 'Error saving data' }, { status: 500 })
-    } else {
-      return NextResponse.json({ message: 'Data saved successfully' }, { status: 200 })
-    }
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/plain',
+      'Transfer-Encoding': 'chunked',
+    },
   });
-  return NextResponse.json({ message: 'Data saved successfully' }, { status: 200 })
 }

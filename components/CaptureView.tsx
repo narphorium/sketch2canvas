@@ -1,21 +1,46 @@
-import React, { useState, useRef, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useRef, useEffect, use } from 'react';
 import styles from './CaptureView.module.css';
 
-interface CaptureViewProps {
-  
-}
 
-export const CaptureView = ({  }: CaptureViewProps) => {
+export const CaptureView = () => {
   const [errorMessage, setErrorMessage] = useState('');
+  const [status, setStatus] = useState<'running' | 'success' | 'error' | ''>('');
   const [statusMessage, setStatusMessage] = useState('');
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [imageSrc, setImageSrc] = useState('');
   const [cameraIndex, setCameraIndex] = useState(0);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [buffer, setBuffer] = useState('');
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    updateDeviceList();
+    // requestCameraPermission();
+  }, []);
+
+  useEffect(() => {
+    const lines = buffer.trim().split('\n');
+    if (lines.length > 0) {
+      const lastLine = lines[lines.length - 1].trim();
+      if (lastLine.endsWith('}')) {
+        const chunk = JSON.parse(lastLine);
+        setStatus(chunk.status);
+        setStatusMessage(chunk.message);
+      }
+    }
+  }, [buffer]);
+
+  const updateDeviceList = async () => {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const filteredDevices = devices.filter((device) => device.kind === 'videoinput');
+    setDevices(filteredDevices);
+    console.log('Available video devices:', filteredDevices);
+  }
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -52,6 +77,7 @@ export const CaptureView = ({  }: CaptureViewProps) => {
       setStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.play();
       }
       setErrorMessage('');
       setStatusMessage('Webcam started successfully!');
@@ -89,6 +115,16 @@ export const CaptureView = ({  }: CaptureViewProps) => {
     }
   };
 
+  const resetImage = () => {
+    setImageSrc('');
+  }
+
+  const clickImageMode = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
   const stopWebcam = () => {
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
@@ -104,13 +140,29 @@ export const CaptureView = ({  }: CaptureViewProps) => {
     setImageSrc('');
     
     if (canvasRef.current) {
-      try {
-        const imageData = canvasRef.current.toDataURL('image/png');
-        await axios.post('/canvas', { imageData });
-        alert('Data saved successfully');
-      } catch (error) {
-        console.error('Error saving data:', error);
-        alert('Error saving data');
+      let name = '';
+      if (nameRef.current) {
+        name = nameRef.current.value;
+      }
+      const imageData = canvasRef.current.toDataURL('image/png');
+      const response = await fetch('/canvas', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageData, name })
+      });
+
+      if (response.body !== null) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        setBuffer('');
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          setBuffer((prevText) => prevText + chunk);
+        }
       }
     }
   };
@@ -126,13 +178,6 @@ export const CaptureView = ({  }: CaptureViewProps) => {
           canvas.height = image.height;
           ctx.drawImage(image, 0, 0);
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const data = imageData.data;
-          for (let i = 0; i < data.length; i += 4) {
-            const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-            data[i] = avg; // red
-            data[i + 1] = avg; // green
-            data[i + 2] = avg; // blue
-          }
           ctx.putImageData(imageData, 0, 0);
           setImageSrc(canvas.toDataURL('image/png'));
         };
@@ -141,30 +186,49 @@ export const CaptureView = ({  }: CaptureViewProps) => {
     }
   };
 
+  const toggleSettings = () => {
+    setSettingsVisible((prevVisible) => !prevVisible);
+  }
+
+
   return (
     <div className={styles.container}>
-      <h1>Image Processor</h1>
-      <input type="file" ref={fileInputRef} accept="image/*" onChange={handleFileInputChange} />
-      <button onClick={requestCameraPermission}>Use Webcam</button>
-      <button onClick={captureImage} className={stream ? styles.visible : styles.hidden}>
-        Capture Image
-      </button>
-      <button onClick={submitRequest}>Submit</button>
 
-      <div className={styles.statusMessage}>{statusMessage}</div>
-      <div className={styles.errorMessage}>{errorMessage}</div>
-      <div className={styles.videoContainer}>
-        <video ref={videoRef} width="100%" autoPlay className={stream ? styles.visible : styles.hidden}></video>
-      </div>
-      <div className={styles.imageContainer}>
-        <img
-          src={imageSrc}
-          alt="Processed Image"
-          className={styles.image}
-          onLoad={processImage}
-        />
-      </div>
-      <canvas ref={canvasRef} className={styles.canvas}></canvas>
+        <div className={styles.modeContainer + ' ' + (stream || imageSrc ? styles.hidden : styles.visible)}>
+          <div>
+            <button onClick={requestCameraPermission} className={styles.modeButton}><img src="/camera.svg"/><br/>Use Webcam</button>
+            <button onClick={clickImageMode} className={styles.modeButton}><img src="/folder.svg"/><br/>Use Image</button>
+          </div>
+          <input type="file" ref={fileInputRef} accept="image/*" onChange={handleFileInputChange} />
+        </div>
+        <div className={styles.videoContainer + ' ' + (stream ? styles.visible : styles.hidden)}>
+          <video ref={videoRef} width="100%" autoPlay className={styles.stream + ' ' + (stream ? styles.visible : styles.hidden)}></video>
+          <div className={styles.controlsContainer}>
+            <button onClick={stopWebcam} className={styles.buttonStart}>Cancel</button>
+            <button onClick={captureImage} className={styles.primaryButton + ' ' + styles.buttonEnd}>Capture Image</button>
+          </div>
+        </div>
+        <div className={styles.submitContainer + ' ' + (imageSrc ? styles.visible : styles.hidden)}>
+          <img
+            src={imageSrc}
+            alt="Processed Image"
+            className={styles.image + ' ' + (imageSrc ? styles.visible : styles.hidden)}
+            onLoad={processImage}
+          />
+          <canvas ref={canvasRef} className={styles.canvas + ' ' + (stream ? styles.hidden : styles.visible)}></canvas>
+          <div className={styles.controlsContainer}>
+            <label>Name:</label><input ref={nameRef} type="text" value="my_canvas" />
+            <button onClick={resetImage} className={styles.buttonStart}>Clear</button>
+            <button onClick={submitRequest} className={styles.primaryButton + ' ' + styles.buttonEnd}>Generate</button>
+            <button onClick={toggleSettings} className={styles.settingsButton}></button>
+            <div className={styles.settingsMenu + ' ' + (settingsVisible ? styles.visible : styles.hidden)}>
+              <div><input type="checkbox" /><label>Setting 1</label></div>
+              <div><input type="checkbox" /><label>Setting 2</label></div>
+              <div><input type="checkbox" /><label>Setting 3</label></div>
+            </div>
+          </div>
+          <div className={styles.statusMessage + ' ' + styles[status]}><span className={styles.loader}></span>{statusMessage}</div>
+        </div>
     </div>
   );
 };
