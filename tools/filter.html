@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parameterized Image Erosion Filter with 1/8 Downscaling and Coordinate Tooltip</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin: 0; padding: 20px; box-sizing: border-box; }
+        #canvasContainer { position: relative; display: inline-block; }
+        canvas { border: 1px solid #ddd; margin-top: 20px; }
+        input, button, select { margin: 10px; }
+        #tooltip {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px;
+            border-radius: 3px;
+            font-size: 12px;
+            pointer-events: none;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Parameterized Image Erosion Filter with 1/8 Downscaling and Coordinate Tooltip</h1>
+    <input type="file" id="imageInput" accept="image/png">
+    <br>
+    <label for="filterSize">Filter Size:</label>
+    <select id="filterSize">
+        <option value="3">3x3</option>
+        <option value="5">5x5</option>
+        <option value="7">7x7</option>
+        <option value="9">9x9</option>
+    </select>
+    <label for="iterations">Iterations:</label>
+    <input type="number" id="iterations" min="1" max="10" value="3">
+    <br>
+    <button id="applyFilter">Apply Erosion and Downscale</button>
+    <button id="resetImage">Reset Image</button>
+    <br>
+    <div id="canvasContainer">
+        <canvas id="imageCanvas"></canvas>
+        <div id="tooltip"></div>
+    </div>
+
+    <script>
+        const imageInput = document.getElementById('imageInput');
+        const applyFilterBtn = document.getElementById('applyFilter');
+        const resetImageBtn = document.getElementById('resetImage');
+        const canvas = document.getElementById('imageCanvas');
+        const ctx = canvas.getContext('2d');
+        const canvasContainer = document.getElementById('canvasContainer');
+        const tooltip = document.getElementById('tooltip');
+        const filterSizeSelect = document.getElementById('filterSize');
+        const iterationsInput = document.getElementById('iterations');
+
+        let originalImageData;
+        let currentImageData;
+        let originalImage;
+
+        function displayImage(imageData) {
+            canvas.width = imageData.width;
+            canvas.height = imageData.height;
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        function updateTooltip(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor(event.clientX - rect.left);
+            const y = Math.floor(event.clientY - rect.top);
+            
+            if (x >= 0 && x < canvas.width && y >= 0 && y < canvas.height) {
+                tooltip.style.display = 'block';
+                tooltip.style.left = (event.clientX - rect.left + 10) + 'px';
+                tooltip.style.top = (event.clientY - rect.top + 10) + 'px';
+                tooltip.textContent = `(${x}, ${y})`;
+            } else {
+                tooltip.style.display = 'none';
+            }
+        }
+
+        canvasContainer.addEventListener('mousemove', updateTooltip);
+        canvasContainer.addEventListener('mouseout', () => {
+            tooltip.style.display = 'none';
+        });
+
+        imageInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+
+            reader.onload = (event) => {
+                originalImage = new Image();
+                originalImage.onload = () => {
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = originalImage.width;
+                    tempCanvas.height = originalImage.height;
+                    const tempCtx = tempCanvas.getContext('2d');
+                    tempCtx.drawImage(originalImage, 0, 0);
+                    originalImageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+                    currentImageData = new ImageData(
+                        new Uint8ClampedArray(originalImageData.data),
+                        originalImageData.width,
+                        originalImageData.height
+                    );
+                    displayImage(currentImageData);
+                };
+                originalImage.src = event.target.result;
+            };
+
+            reader.readAsDataURL(file);
+        });
+
+        applyFilterBtn.addEventListener('click', () => {
+            if (!currentImageData) return;
+
+            const filterSize = parseInt(filterSizeSelect.value);
+            const iterations = parseInt(iterationsInput.value);
+            const result = applyErosionAndDownscale(currentImageData, filterSize, iterations);
+            currentImageData = result;
+            displayImage(currentImageData);
+        });
+
+        resetImageBtn.addEventListener('click', () => {
+            if (originalImageData) {
+                currentImageData = new ImageData(
+                    new Uint8ClampedArray(originalImageData.data),
+                    originalImageData.width,
+                    originalImageData.height
+                );
+                displayImage(currentImageData);
+            }
+        });
+
+        function applyErosion(imageData, filterSize) {
+            const src = imageData.data;
+            const sw = imageData.width;
+            const sh = imageData.height;
+            const dst = new Uint8ClampedArray(src.length);
+            const halfSide = Math.floor(filterSize / 2);
+
+            for (let y = 0; y < sh; y++) {
+                for (let x = 0; x < sw; x++) {
+                    const dstOff = (y * sw + x) * 4;
+                    let minR = 255, minG = 255, minB = 255, minA = 255;
+
+                    for (let cy = 0; cy < filterSize; cy++) {
+                        for (let cx = 0; cx < filterSize; cx++) {
+                            const scy = Math.min(Math.max(y + cy - halfSide, 0), sh - 1);
+                            const scx = Math.min(Math.max(x + cx - halfSide, 0), sw - 1);
+                            const srcOff = (scy * sw + scx) * 4;
+                            minR = Math.min(minR, src[srcOff]);
+                            minG = Math.min(minG, src[srcOff + 1]);
+                            minB = Math.min(minB, src[srcOff + 2]);
+                            minA = Math.min(minA, src[srcOff + 3]);
+                        }
+                    }
+
+                    dst[dstOff] = minR;
+                    dst[dstOff + 1] = minG;
+                    dst[dstOff + 2] = minB;
+                    dst[dstOff + 3] = minA;
+                }
+            }
+
+            return new ImageData(dst, sw, sh);
+        }
+
+        function applyErosionAndDownscale(imageData, filterSize, iterations) {
+            let erodedData = imageData;
+            for (let i = 0; i < iterations; i++) {
+                erodedData = applyErosion(erodedData, filterSize);
+            }
+
+            const src = erodedData.data;
+            const sw = erodedData.width;
+            const sh = erodedData.height;
+            const scaleFactor = 8;
+            const newWidth = Math.floor(sw / scaleFactor);
+            const newHeight = Math.floor(sh / scaleFactor);
+            const dst = new Uint8ClampedArray(newWidth * newHeight * 4);
+
+            for (let y = 0; y < newHeight; y++) {
+                for (let x = 0; x < newWidth; x++) {
+                    const dstOff = (y * newWidth + x) * 4;
+                    let sumR = 0, sumG = 0, sumB = 0, sumA = 0;
+
+                    for (let py = 0; py < scaleFactor; py++) {
+                        for (let px = 0; px < scaleFactor; px++) {
+                            const srcY = Math.min(y * scaleFactor + py, sh - 1);
+                            const srcX = Math.min(x * scaleFactor + px, sw - 1);
+                            const srcOff = (srcY * sw + srcX) * 4;
+                            sumR += src[srcOff];
+                            sumG += src[srcOff + 1];
+                            sumB += src[srcOff + 2];
+                            sumA += src[srcOff + 3];
+                        }
+                    }
+
+                    dst[dstOff] = Math.round(sumR / (scaleFactor * scaleFactor));
+                    dst[dstOff + 1] = Math.round(sumG / (scaleFactor * scaleFactor));
+                    dst[dstOff + 2] = Math.round(sumB / (scaleFactor * scaleFactor));
+                    dst[dstOff + 3] = Math.round(sumA / (scaleFactor * scaleFactor));
+                }
+            }
+
+            return new ImageData(dst, newWidth, newHeight);
+        }
+    </script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, use } from 'react';
 import styles from './CaptureView.module.css';
+import usePersistantState from './usePersistantState';
 
 
 export const CaptureView = () => {
@@ -8,20 +9,16 @@ export const CaptureView = () => {
   const [statusMessage, setStatusMessage] = useState('');
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [imageSrc, setImageSrc] = useState('');
-  const [cameraIndex, setCameraIndex] = useState(0);
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [buffer, setBuffer] = useState('');
   const [settingsVisible, setSettingsVisible] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const nameRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => {
-    updateDeviceList();
-    // requestCameraPermission();
-  }, []);
+  const [variablePattern, setVariablePattern] = usePersistantState<string>('settings.variablePattern', '$VAR');
+  const [cannoliMode, setCannoliMode] = usePersistantState<boolean>('settings.cannoliMode', true);
+  const [outputFilename, setOutputFilename] = useState('my_canvas');
 
   useEffect(() => {
     const lines = buffer.trim().split('\n');
@@ -35,18 +32,15 @@ export const CaptureView = () => {
     }
   }, [buffer]);
 
-  const updateDeviceList = async () => {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const filteredDevices = devices.filter((device) => device.kind === 'videoinput');
-    setDevices(filteredDevices);
-    console.log('Available video devices:', filteredDevices);
-  }
-
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = (event) => {
+        const p = file.name.split('.')
+        if (p.length > 1) {
+          setOutputFilename(p[p.length - 2])
+        }
         setImageSrc(event.target?.result as string);
       };
       reader.readAsDataURL(file);
@@ -134,23 +128,20 @@ export const CaptureView = () => {
   };
 
   const submitRequest = async () => {
-    if (stream) {
-      stopWebcam();
-    }
-    setImageSrc('');
-    
     if (canvasRef.current) {
-      let name = '';
-      if (nameRef.current) {
-        name = nameRef.current.value;
-      }
+      let name = outputFilename;
       const imageData = canvasRef.current.toDataURL('image/png');
       const response = await fetch('/canvas', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ imageData, name })
+        body: JSON.stringify({ 
+          imageData, 
+          name,
+          variablePattern,
+          mode: cannoliMode ? 'cannoli' : 'default'
+        })
       });
 
       if (response.body !== null) {
@@ -163,6 +154,7 @@ export const CaptureView = () => {
           const chunk = decoder.decode(value);
           setBuffer((prevText) => prevText + chunk);
         }
+        // setImageSrc('');
       }
     }
   };
@@ -217,14 +209,18 @@ export const CaptureView = () => {
           />
           <canvas ref={canvasRef} className={styles.canvas + ' ' + (stream ? styles.hidden : styles.visible)}></canvas>
           <div className={styles.controlsContainer}>
-            <label>Name:</label><input ref={nameRef} type="text" value="my_canvas" />
+            <label>Name:</label><input type="text" defaultValue={outputFilename} onChange={(e) => setOutputFilename(e.target.value)} />
             <button onClick={resetImage} className={styles.buttonStart}>Clear</button>
             <button onClick={submitRequest} className={styles.primaryButton + ' ' + styles.buttonEnd}>Generate</button>
             <button onClick={toggleSettings} className={styles.settingsButton}></button>
             <div className={styles.settingsMenu + ' ' + (settingsVisible ? styles.visible : styles.hidden)}>
-              <div><input type="checkbox" /><label>Setting 1</label></div>
-              <div><input type="checkbox" /><label>Setting 2</label></div>
-              <div><input type="checkbox" /><label>Setting 3</label></div>
+              <h3>Settings</h3>
+              <div className={styles.settingsGrid}>
+                <label>Variable pattern</label>
+                <input type="text" defaultValue={variablePattern} onChange={(e) => setVariablePattern(e.target.value)} />
+                <label>Use <a href="https://github.com/DeabLabs/cannoli" target="_blank">Cannoli</a> format</label>
+                <input type="checkbox" defaultChecked={cannoliMode} onChange={(e) => setCannoliMode(e.target.checked)}/>
+              </div>
             </div>
           </div>
           <div className={styles.statusMessage + ' ' + styles[status]}><span className={styles.loader}></span>{statusMessage}</div>

@@ -7,31 +7,144 @@ const MODEL_NAME = "claude-3-opus-20240229";
 
 const anthropic = new Anthropic();
 
-const system_prompt = `You are a AI engineer working on a prompt workflow. 
+const default_system_prompt = `You are a AI engineer working on a prompt workflow. 
 You have been tasked with creating a JSON Canvas diagram that shows the flow of prompts from a handwritten sketch.
 
 The diagram should be formatted like this:
 
-\`\`\`json
+<canvas>
 {
 	"nodes":[
-		{"type":"group","id":"161279baf7763214","x":-174,"y":-160,"width":394,"height":340,"label":"Cannoli"},
-		{"type":"text","text":"Hello world!","id":"dc3f9351f787531e","x":-97,"y":-91,"width":250,"height":60},
-		{"type":"text","text":"","id":"bc1a550bbb4aac7b","x":-97,"y":60,"width":250,"height":60,"color":"6"},
-		{"type":"text","text":"The purple node is a content node. Content nodes can be used to store and display text that can be read or written by you or another node.","id":"f77169b141243e65","x":240,"y":30,"width":420,"height":120},
-		{"type":"text","text":"The colorless, green, or yellow node is a call node. Call nodes make a chat completion call to the LLM with the text of the node as a user message.","id":"0af5a453bd4d6ec9","x":240,"y":-110,"width":380,"height":120},
-		{"type":"text","text":"If a node in a cannoli is floating (no arrows attached) it won't affect the cannoli unless it is formatted in a special way we'll go over later.","id":"7d005c80299f3674","x":-202,"y":220,"width":461,"height":112},
-		{"type":"text","text":"This is a Cannoli. It's made up of different types of nodes and arrows.\n\nTry running it by clicking the Cannoli button in the control ribbon on the left side of your Obsidian window.","id":"24dd96c964700992","x":-147,"y":-400,"width":350,"height":180},
-		{"type":"text","text":"Cannolis can be run in several ways:\n\n- Click the Cannoli ribbon icon\n    - If you're on a canvas file, it will be run as a cannoli\n    - If you're on a note with a \"cannoli\" property, the canvas file in that property will be run as a cannoli\n- Run the \"Start/Stop cannoli\" command in the command palette (functions the same as the ribbon icon)\n- If a canvas file name ends with \".cno\", it will have its own run command in the command palette\n- Make an audio recording on a note with a \"cannoli\" property\n\t- That recording will be transcribed, replace the reference, and trigger the cannoli defined in the property.","id":"927cf33512b0dfc1","x":-740,"y":-182,"width":538,"height":402}
+		{"id":"node1","type":"text","text":"","x":203,"y":81,"width":25,"height":43,"color":"4"},
+		{"id":"node2","type":"text","text":"","x":122,"y":101,"width":33,"height":27},
+		{"id":"node3","type":"text","text":"","x":155,"y":151,"width":52,"height":59,"color":"6"}
 	],
 	"edges":[
-		{"id":"23c2d7dffb49bf75","fromNode":"dc3f9351f787531e","fromSide":"bottom","toNode":"bc1a550bbb4aac7b","toSide":"top"}
+		{"id":"edge1","fromNode":"node1","fromSide":"top","toNode":"node2","toSide":"top"},
+		{"id":"edge2","fromNode":"node3","fromSide":"top","toNode":"node1","toSide":"left"},
+		{"id":"edge3","fromNode":"node2","fromSide":"bottom","toNode":"node3","toSide":"left"}
 	]
 }
-\`\`\``
+</canvas>
+`
 
 
-const convertSketchToJSON = async function* (imageData: string, filename: string) {
+const cannoli_system_prompt = `You are a expert technical diagram converter. 
+Your task is to create a JSON Canvas diagram from a handwritten sketch.
+Start by creating lists of nodes and edges based on the sketch writing out your thoughts as you go.
+All nodes must have a "type" of "text" and a "text" value of "".
+All system prompts should bvy purple nodes and connect to a user prompt.
+All user prompts should be gray nodes and connect to an assistant response.
+All assistant nodes should be purple nodes.
+If no assistant nodes is present, you should add one connected to the last user node.
+Pay extra attention to the direction of the arrows in the sketch. The start of the arrow represents the "fromNode" and the wider end of the arrow represents the "toNode".
+
+EVERY node has a color must be specified in the node's JSON object as follows:
+
+<colors>
+Black or gray: {"type":"text", ... }
+Red: {"type":"text", ... , "color":"1"}
+Orange: {"type":"text", ... , "color":"2"}
+Yellow: {"type":"text", ... , "color":"3"}
+Green: {"type":"text", ... , "color":"4"}
+Blue: {"type":"text", ... , "color":"5"}
+Purple: {"type":"text", ... , "color":"6"}
+</colors>
+
+Here is an example of what the completed JSON might look like:
+
+<canvas>
+{
+	"nodes":[
+		{"id":"node1","type":"text","text":"","x":203,"y":81,"width":25,"height":43,"color":"4"},
+		{"id":"node2","type":"text","text":"","x":122,"y":101,"width":33,"height":27},
+		{"id":"node3","type":"text","text":"","x":155,"y":151,"width":52,"height":59,"color":"6"}
+	],
+	"edges":[
+		{"id":"edge1","fromNode":"node1","fromSide":"top","toNode":"node2","toSide":"top"},
+		{"id":"edge2","fromNode":"node3","fromSide":"top","toNode":"node1","toSide":"left"},
+		{"id":"edge3","fromNode":"node2","fromSide":"bottom","toNode":"node3","toSide":"left"}
+	]
+}
+</canvas>
+`
+
+
+const variables_system_prompt = `You are a AI engineer working on a prompt workflow. 
+You have been tasked with creating a JSON Canvas diagram that shows the flow of prompts from a handwritten sketch.
+
+To add parameters to the JSON Canvas diagram, you need to add a new node and an edge connecting it to the existing node where the parameter is used.
+All parameter nodes have color "6" and are represented as empty text nodes.
+Make sure that the new parameter node does not overlap with any existing nodes.
+
+For example, the following parameters produced the following JSON Canvas diagram:
+
+<canvas>
+{
+  "nodes": [
+    ...,
+    {
+      "type": "text",
+      "text": "What is the capital of {{country}}",
+      "id": "node1",
+      "x": -135,
+      "y": -160,
+      "width": 270,
+      "height": 60
+    }
+  ],
+  "edges": [
+    ...
+  ]
+}
+</canvas>
+
+Add the following parameters to the JSON Canvas diagram:
+
+<parameters>
+Variable "country" connects to node "c05f05c824cc0a17"
+</parameters>
+
+<canvas>
+{
+  "nodes": [
+    ...,
+    {
+      "type": "text",
+      "text": "What is the capital of {{country}}?",
+      "id": "node1",
+      "x": -135,
+      "y": -160,
+      "width": 270,
+      "height": 60
+    },
+    {
+      "type": "text",
+      "text": "",
+      "id": "node2",
+      "x": -67,
+      "y": 80,
+      "width": 135,
+      "height": 60,
+      "color": "6"
+    }
+  ],
+  "edges": [
+    ...,
+    {
+      "id": "edge1",
+      "label": "country"
+      "fromNode": "node2",
+      "fromSide": "bottom",
+      "toNode": "node1",
+      "toSide": "top"
+    }
+  ]
+}
+</canvas>
+`
+
+const convertSketchToJSON = async function* (imageData: string, filename: string, system_prompt: string) {
   
   yield { message: 'Processing image...', status: 'running' };
 
@@ -50,9 +163,9 @@ const convertSketchToJSON = async function* (imageData: string, filename: string
   if (msg.content.length == 1 && msg.content[0].type == 'text') {
     json_data = msg.content[0].text;
   }
-  if (json_data.indexOf('```json\n') >= 0) {
-    json_data = json_data.slice(json_data.indexOf('```json\n') + 8);
-    json_data = json_data.replace('```', '');
+  if (json_data.indexOf('<canvas>') >= 0) {
+    json_data = json_data.slice(json_data.indexOf('<canvas>') + 8);
+    json_data = json_data.replace('</canvas>', '');
     json_data = json_data.trim();
   }
 
@@ -92,7 +205,11 @@ export async function POST(request: NextRequest) {
           throw new Error('OBSIDIAN_VAULT environment variable not set');
         } else {
           const outputFilename = path.join(vaultPath, `${data.name}.canvas`);
-          for await (const chunk of convertSketchToJSON(image_data, outputFilename)) {
+          let system_prompt = default_system_prompt;
+          if (data.mode == 'cannoli') {
+            system_prompt = cannoli_system_prompt;
+          }
+          for await (const chunk of convertSketchToJSON(image_data, outputFilename, system_prompt)) {
             controller.enqueue(encoder.encode(JSON.stringify(chunk) + '\n'));
           }
         }
