@@ -1,7 +1,9 @@
-import fs from 'fs';
 import path from 'path';
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { parseCanvasFromResponse, parseGraphFromJSON, saveCanvas } from '@/lib';
+import { Graph } from '@/types';
+import { StatusUpdate } from '@/types/status';
 
 const MODEL_NAME = "claude-3-opus-20240229";
 
@@ -9,8 +11,11 @@ const anthropic = new Anthropic();
 
 const default_system_prompt = `You are a AI engineer working on a prompt workflow. 
 You have been tasked with creating a JSON Canvas diagram that shows the flow of prompts from a handwritten sketch.
+Make sure that you transcribe the text as accurately as possible.
+Only transcribe the text from the system prompts and user prompts.
+If there are no arrows in the sketch, you should add them to the JSON Canvas diagram assuming the direction of the arrows.
 
-The diagram should be formatted like this:
+Here is an example of what the completed JSON might look like:
 
 <canvas>
 {
@@ -31,7 +36,7 @@ The diagram should be formatted like this:
 
 const cannoli_system_prompt = `You are a expert technical diagram converter. 
 Your task is to create a JSON Canvas diagram from a handwritten sketch.
-Start by creating lists of nodes and edges based on the sketch writing out your thoughts as you go.
+Make sure that you transcribe the text as accurately as possible. 
 All nodes must have a "type" of "text" and a "text" value of "".
 All system prompts should bvy purple nodes and connect to a user prompt.
 All user prompts should be gray nodes and connect to an assistant response.
@@ -70,7 +75,7 @@ Here is an example of what the completed JSON might look like:
 `
 
 
-const variables_system_prompt = `You are a AI engineer working on a prompt workflow. 
+const variables_system_prompt = `You are a expert technical diagram builder.
 You have been tasked with creating a JSON Canvas diagram that shows the flow of prompts from a handwritten sketch.
 
 To add parameters to the JSON Canvas diagram, you need to add a new node and an edge connecting it to the existing node where the parameter is used.
@@ -144,12 +149,12 @@ Variable "country" connects to node "c05f05c824cc0a17"
 </canvas>
 `
 
-const convertSketchToJSON = async function* (imageData: string, filename: string, system_prompt: string) {
+const convertSketchToJSON = async function* (imageData: string, filename: string, system_prompt: string, variablePattern: RegExp): AsyncGenerator<StatusUpdate> {
   
   yield { message: 'Processing image...', status: 'running' };
 
   const user_prompt = 'Create a JSON Canvas. Only output the JSON code.'
-  const msg = await anthropic.messages.create({
+  const response = await anthropic.messages.create({
     model: MODEL_NAME,
     max_tokens: 2048,
     system: system_prompt,
@@ -157,35 +162,87 @@ const convertSketchToJSON = async function* (imageData: string, filename: string
       { type: "image", source: { type: "base64", media_type: "image/png", data: imageData } },
       { type: "text", text: user_prompt }]}],
   });
-  console.log('LLM Response:', msg);
+  console.log('LLM Response:', response);
 
-  let json_data = '';
-  if (msg.content.length == 1 && msg.content[0].type == 'text') {
-    json_data = msg.content[0].text;
-  }
-  if (json_data.indexOf('<canvas>') >= 0) {
-    json_data = json_data.slice(json_data.indexOf('<canvas>') + 8);
-    json_data = json_data.replace('</canvas>', '');
-    json_data = json_data.trim();
+  let canvas: Graph = parseCanvasFromResponse(response);
+
+  for await (const chunk of saveCanvas(canvas, filename)) {
+    yield chunk;
   }
 
-  yield { message: 'Saving canvas...', status: 'running' };
+  let { variablesByNode, updatedGraph } = extractVariables(canvas, variablePattern);
+  if (Object.keys(variablesByNode).length > 0) {
+    yield { message: 'Adding variables to canvas...', status: 'running' };
+    const var_user_prompt = `<canvas>
+${JSON.stringify(updatedGraph, null, 2)}
+</canvas>
 
-  try {
-    await new Promise<void>((resolve, reject) => {
-      fs.writeFile(filename, json_data, (err) => {
-        if (err) {
-          console.error(err);
-          reject(err);
-        } else {
-          resolve();
-        }
-      });
+Add the following parameters to the JSON Canvas diagram:
+
+<parameters>
+${formatVariables(variablesByNode)}
+</parameters>`;
+
+    const var_response = await anthropic.messages.create({
+      model: MODEL_NAME,
+      max_tokens: 2048,
+      system: variables_system_prompt,
+      messages: [{ role: "user", content: [
+        { type: "text", text: var_user_prompt }]}],
     });
-    yield { message: 'Canvas saved successfully', status: 'success' };
-  } catch (err) {
-    yield { message: 'Error saving canvas', status: 'error' };
+    console.log('Var prompt response:', var_response);
+
+    canvas = parseCanvasFromResponse(var_response);
+
+    yield { message: `Added ${Object.keys(variablesByNode).length} variables to canvas`, status: 'success' };
+
+    for await (const chunk of saveCanvas(canvas, filename)) {
+      yield chunk;
+    }
   }
+}
+
+function extractVariables(graph: Graph, variablePattern: RegExp): { 
+  variablesByNode: { [key: string]: Set<string> },
+  updatedGraph: Graph 
+} {
+  const variablesByNode: { [key: string]: Set<string> } = {};
+  const updatedGraph: Graph = JSON.parse(JSON.stringify(graph)); // Deep copy
+
+  for (const node of updatedGraph.nodes) {
+    if ('text' in node && node.text) {
+      const variables = new Set<string>();
+      node.text = node.text.replace(variablePattern, (match, p1) => {
+        const varName = p1.toLowerCase();
+        variables.add(varName);
+        return `{{${varName}}}`;
+      });
+
+      if (variables.size > 0) {
+        variablesByNode[node.id] = variablesByNode[node.id] 
+          ? new Set([...variablesByNode[node.id], ...variables])
+          : variables;
+      }
+    }
+  }
+
+  return { variablesByNode, updatedGraph };
+}
+
+function formatVariables(variablesByNode: { [key: string]: Set<string> }): string {
+  let output = '';
+  for (const [node, variables] of Object.entries(variablesByNode)) {
+    for (const variable of variables) {
+      output += `Variable "${variable.toLowerCase()}" connects to node "${node}"\n`;
+    }
+  }
+  return output;
+}
+
+const buildVariablePattern = (pattern: string): RegExp => {
+  pattern = pattern.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, "\\$1");
+  pattern = pattern.replace(/VAR/g, '(\\w+)');
+  return new RegExp(pattern, 'g');
 }
  
 export async function POST(request: NextRequest) {
@@ -209,7 +266,11 @@ export async function POST(request: NextRequest) {
           if (data.mode == 'cannoli') {
             system_prompt = cannoli_system_prompt;
           }
-          for await (const chunk of convertSketchToJSON(image_data, outputFilename, system_prompt)) {
+          let variablePattern = new RegExp(`\\$(\\w+)`, 'g')
+          if (data.variablePattern) {
+            variablePattern = buildVariablePattern(data.variablePattern);
+          }
+          for await (const chunk of convertSketchToJSON(image_data, outputFilename, system_prompt, variablePattern)) {
             controller.enqueue(encoder.encode(JSON.stringify(chunk) + '\n'));
           }
         }

@@ -4,7 +4,6 @@ import usePersistantState from './usePersistantState';
 
 
 export const CaptureView = () => {
-  const [errorMessage, setErrorMessage] = useState('');
   const [status, setStatus] = useState<'running' | 'success' | 'error' | ''>('');
   const [statusMessage, setStatusMessage] = useState('');
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -17,7 +16,8 @@ export const CaptureView = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [variablePattern, setVariablePattern] = usePersistantState<string>('settings.variablePattern', '$VAR');
-  const [cannoliMode, setCannoliMode] = usePersistantState<boolean>('settings.cannoliMode', true);
+  const [cannoliMode, setCannoliMode] = usePersistantState<boolean>('settings.cannoliMode', false);
+  const [metaprompting, setMetaprompting] = usePersistantState<boolean>('settings.metaprompting', false);
   const [outputFilename, setOutputFilename] = useState('my_canvas');
 
   useEffect(() => {
@@ -73,8 +73,7 @@ export const CaptureView = () => {
         videoRef.current.srcObject = stream;
         videoRef.current.play();
       }
-      setErrorMessage('');
-      setStatusMessage('Webcam started successfully!');
+      // setStatusMessage('Webcam started successfully!');
     } catch (err: any) {
       handleWebcamError(err);
     }
@@ -90,8 +89,8 @@ export const CaptureView = () => {
     } else {
       errorMsg += "Please ensure your device has a webcam and you've granted permission to use it.";
     }
-    setErrorMessage(errorMsg);
-    setStatusMessage('');
+    setStatusMessage(errorMsg);
+    setStatus('error');
   };
 
   const captureImage = () => {
@@ -104,6 +103,8 @@ export const CaptureView = () => {
       if (ctx) {
         ctx.drawImage(video, 0, 0);
         setImageSrc(canvas.toDataURL('image/png'));
+        setStatusMessage('');
+        setStatus('');
         stopWebcam();
       }
     }
@@ -111,6 +112,8 @@ export const CaptureView = () => {
 
   const resetImage = () => {
     setImageSrc('');
+    setStatusMessage('');
+    setStatus('');
   }
 
   const clickImageMode = () => {
@@ -210,7 +213,7 @@ export const CaptureView = () => {
           <canvas ref={canvasRef} className={styles.canvas + ' ' + (stream ? styles.hidden : styles.visible)}></canvas>
           <div className={styles.controlsContainer}>
             <label>Name:</label><input type="text" defaultValue={outputFilename} onChange={(e) => setOutputFilename(e.target.value)} />
-            <button onClick={resetImage} className={styles.buttonStart}>Clear</button>
+            <button onClick={resetImage} className={styles.buttonStart}>Restart</button>
             <button onClick={submitRequest} className={styles.primaryButton + ' ' + styles.buttonEnd}>Generate</button>
             <button onClick={toggleSettings} className={styles.settingsButton}></button>
             <div className={styles.settingsMenu + ' ' + (settingsVisible ? styles.visible : styles.hidden)}>
@@ -220,6 +223,8 @@ export const CaptureView = () => {
                 <input type="text" defaultValue={variablePattern} onChange={(e) => setVariablePattern(e.target.value)} />
                 <label>Use <a href="https://github.com/DeabLabs/cannoli" target="_blank">Cannoli</a> format</label>
                 <input type="checkbox" defaultChecked={cannoliMode} onChange={(e) => setCannoliMode(e.target.checked)}/>
+                <label>Enable metaprompting</label>
+                <input type="checkbox" defaultChecked={metaprompting} onChange={(e) => setMetaprompting(e.target.checked)}/>
               </div>
             </div>
           </div>
