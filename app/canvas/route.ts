@@ -2,7 +2,7 @@ import path from 'path';
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { parseCanvasFromResponse, parseGraphFromJSON, saveCanvas } from '@/lib';
-import { Graph } from '@/types';
+import { Graph, NodeColor } from '@/types';
 import { StatusUpdate } from '@/types/status';
 
 const MODEL_NAME = "claude-3-opus-20240229";
@@ -12,7 +12,8 @@ const anthropic = new Anthropic();
 const default_system_prompt = `You are a AI engineer working on a prompt workflow. 
 You have been tasked with creating a JSON Canvas diagram that shows the flow of prompts from a handwritten sketch.
 Make sure that you transcribe the text as accurately as possible.
-Only transcribe the text from the system prompts and user prompts.
+Only transcribe the text from the  prompts. Ignore all other text on the page including the title and any other text that is not part of the prompt.
+Do not include the text "SYSTEM PROMPT" or "USER PROMPT" in the JSON Canvas diagram.
 If there are no arrows in the sketch, you should add them to the JSON Canvas diagram assuming the direction of the arrows.
 
 Here is an example of what the completed JSON might look like:
@@ -36,9 +37,11 @@ Here is an example of what the completed JSON might look like:
 
 const cannoli_system_prompt = `You are a expert technical diagram converter. 
 Your task is to create a JSON Canvas diagram from a handwritten sketch.
-Make sure that you transcribe the text as accurately as possible. 
+Make sure that you transcribe the text as accurately as possible.
+Only transcribe the text from the  prompts. Ignore all other text on the page including the title and any other text that is not part of the prompt.
+Do not include the text "SYSTEM PROMPT" or "USER PROMPT" in the JSON Canvas diagram.
 All nodes must have a "type" of "text" and a "text" value of "".
-All system prompts should bvy purple nodes and connect to a user prompt.
+All system prompts should be purple nodes and connect to a user prompt.
 All user prompts should be gray nodes and connect to an assistant response.
 All assistant nodes should be purple nodes.
 If no assistant nodes is present, you should add one connected to the last user node.
@@ -200,6 +203,14 @@ ${formatVariables(variablesByNode)}
       yield chunk;
     }
   }
+
+  if (system_prompt === cannoli_system_prompt) {
+    yield { message: 'Post-processing canvas...', status: 'running' };
+    canvas = postProcessCannoliCanvas(canvas);
+    for await (const chunk of saveCanvas(canvas, filename)) {
+      yield chunk;
+    }
+  }
 }
 
 function extractVariables(graph: Graph, variablePattern: RegExp): { 
@@ -243,6 +254,33 @@ const buildVariablePattern = (pattern: string): RegExp => {
   pattern = pattern.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, "\\$1");
   pattern = pattern.replace(/VAR/g, '(\\w+)');
   return new RegExp(pattern, 'g');
+}
+
+const postProcessCannoliCanvas = (canvas: Graph): Graph => {
+  // This is a set of heuristics to make sure that the output JSON Canvas
+  // conforms to the expected format for the Cannoli plugin.
+
+  // Create lists of all root nodes and all leaf nodes
+  const rootNodes = new Set<string>(canvas.nodes.map((node) => node.id));
+  const leafNodes = new Set<string>(canvas.nodes.map((node) => node.id));
+  canvas.edges.forEach((edge) => {
+    rootNodes.delete(edge.toNode);
+    leafNodes.delete(edge.fromNode);
+  });
+
+  // Look for nodes with "assistant" text and color them purple
+  canvas.nodes.forEach((node) => {
+    if (node.type == 'text') {
+      if (node.text?.toLowerCase().trim() == 'assistant') {
+        node.text = '';
+        node.color = NodeColor.PURPLE;
+      } else if ((node.id in leafNodes) || (node.id in rootNodes)) {
+        node.color = NodeColor.PURPLE;
+      }
+    }
+  });
+  
+  return canvas;
 }
  
 export async function POST(request: NextRequest) {
