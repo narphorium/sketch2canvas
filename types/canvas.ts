@@ -26,7 +26,7 @@ export interface Edge {
     toSide: string;
 }
 
-export interface Graph {
+export interface Canvas {
     nodes: Node[];
     edges: Edge[];
 }

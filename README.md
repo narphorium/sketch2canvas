@@ -63,12 +63,13 @@ Now setup the [Cannoli plugin]( https://github.com/DeabLabs/cannoli) so that you
 2. Under **Restricted mode**, click **Turn on and reload**.
 3. Under **Community plugins**, click **Browse** then use the search field at the top of screen to search for “Cannoli”.
 4. Select **Cannoli** and click **Install**.
-5. Click the **X** to close the plugin directory.
+5. Click the "x" to close the plugin directory.
 6. You should now see **Cannoli** listed under your **Installed Plugins**
 7. Flip the toggle switch beside the **Cannoli** plugin to enable it for your vault.
 8. Now click the gear icon beside the **Cannoli** plugin and add your API key so that Cannoli can make calls to an LLM.
 
-**Note:** Unfortunately the Anthropic client [is currently not working](https://github.com/DeabLabs/cannoli/issues/41) in Cannoli so you will need to use another provider if you want to run your canvases.
+> [!NOTE]
+> Unfortunately the Anthropic client [is currently not working](https://github.com/DeabLabs/cannoli/issues/41) in Cannoli so you will need to use another provider if you want to run your canvases.
 
 Now there should be a Cannoli icon in the left activity bar. When you have an Obsidian canvas file open you can click this button to run the prompt.
 
@@ -76,10 +77,10 @@ Now there should be a Cannoli icon in the left activity bar. When you have an Ob
 
 Once you have the web app running locally and an Obsidian vault to store your generated canvases you can start experimenting with different types of prompts.
 
-When you open the web app you will see the option to either **Use webcam** or **Use image** .
+When you open the web app you will see the option to either **Use Webcam** or **Use Image** .
 
-- **Use webcam** will ask for permission to use your webcam to scan your prompts. It is recommended to arrange your camera so that it is pointing straight down so the sketch is not tilted, skewed or in shadows.
-- **Use image** will open a file dialog to let you upload a PNG file with your sketch. Make sure that the image is large enough for the model to be able to recognize the text.
+- **Use Webcam** will ask for permission to use your webcam to scan your prompts. It is recommended to arrange your camera so that it is pointing straight down so the sketch is not tilted, skewed or in shadows.
+- **Use Image** will open a file dialog to let you upload a PNG file with your sketch. Make sure that the image is large enough for the model to be able to recognize the text.
  
 ### Text prompts
 

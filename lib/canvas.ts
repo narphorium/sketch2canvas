@@ -1,9 +1,9 @@
 import fs from 'fs';
 import Anthropic from '@anthropic-ai/sdk';
-import { Graph } from '../types/graph';
+import { Canvas } from '../types/canvas';
 import { StatusUpdate } from '@/types/status';
 
-export function parseGraphFromJSON(jsonString: string): Graph {
+export function parseGraphFromJSON(jsonString: string): Canvas {
     try {
       const parsedData = JSON.parse(jsonString);
       
@@ -33,9 +33,10 @@ export function parseGraphFromJSON(jsonString: string): Graph {
         }
       });
   
-      return parsedData as Graph;
+      return parsedData as Canvas;
     } catch (error) {
       if (error instanceof Error) {
+        console.log('JSON text:', jsonString);
         throw new Error(`Failed to parse graph from JSON: ${error.message}`);
       } else {
         throw new Error('Failed to parse graph from JSON: Unknown error');
@@ -43,9 +44,9 @@ export function parseGraphFromJSON(jsonString: string): Graph {
     }
   }
 
-  export const parseCanvasFromResponse = (response: Anthropic.Messages.Message): Graph => {
+  export const parseCanvasFromResponse = (response: Anthropic.Messages.Message): Canvas => {
     if (response.content.length == 1 && response.content[0].type == 'text') {
-      let json_data = response.content[0].text;
+      let json_data = response.content[0].text.trim();
       if (json_data.indexOf('<canvas>') >= 0) {
         json_data = json_data.slice(json_data.indexOf('<canvas>') + 8);
         json_data = json_data.replace('</canvas>', '');
@@ -53,10 +54,10 @@ export function parseGraphFromJSON(jsonString: string): Graph {
       }
       return parseGraphFromJSON(json_data);
     }
-    return {} as Graph;
+    return {} as Canvas;
   }
   
-  export const saveCanvas = async function* (canvas: Graph, filename: string): AsyncGenerator<StatusUpdate> {
+  export const saveCanvas = async function* (canvas: Canvas, filename: string): AsyncGenerator<StatusUpdate> {
     yield { message: 'Saving canvas...', status: 'running' };
     try {
       await new Promise<void>((resolve, reject) => {

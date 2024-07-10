@@ -110,10 +110,12 @@ export const CaptureView = () => {
     }
   };
 
-  const resetImage = () => {
+  const resetImage = (e: any) => {
     setImageSrc('');
     setStatusMessage('');
     setStatus('');
+    setSettingsVisible(false);
+    e.stopPropagation();
   }
 
   const clickImageMode = () => {
@@ -130,7 +132,8 @@ export const CaptureView = () => {
     }
   };
 
-  const submitRequest = async () => {
+  const submitRequest = async (e: any) => {
+    e.stopPropagation();
     if (canvasRef.current) {
       let name = outputFilename;
       const imageData = canvasRef.current.toDataURL('image/png');
@@ -143,6 +146,7 @@ export const CaptureView = () => {
           imageData, 
           name,
           variablePattern,
+          metaprompting,
           mode: cannoliMode ? 'cannoli' : 'default'
         })
       });
@@ -157,7 +161,6 @@ export const CaptureView = () => {
           const chunk = decoder.decode(value);
           setBuffer((prevText) => prevText + chunk);
         }
-        // setImageSrc('');
       }
     }
   };
