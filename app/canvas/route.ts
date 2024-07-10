@@ -5,7 +5,7 @@ import { parseCanvasFromResponse, parseGraphFromJSON, saveCanvas } from '@/lib';
 import { Graph, NodeColor } from '@/types';
 import { StatusUpdate } from '@/types/status';
 
-const MODEL_NAME = "claude-3-opus-20240229";
+const MODEL_NAME = "claude-3-5-sonnet-20240620";
 
 const anthropic = new Anthropic();
 
@@ -15,6 +15,7 @@ Make sure that you transcribe the text as accurately as possible.
 Only transcribe the text from the  prompts. Ignore all other text on the page including the title and any other text that is not part of the prompt.
 Do not include the text "SYSTEM PROMPT" or "USER PROMPT" in the JSON Canvas diagram.
 If there are no arrows in the sketch, you should add them to the JSON Canvas diagram assuming the direction of the arrows.
+Make sure the JSON Canvas output is always wrapped in <canvas> tags.
 
 Here is an example of what the completed JSON might look like:
 
@@ -38,14 +39,18 @@ Here is an example of what the completed JSON might look like:
 const cannoli_system_prompt = `You are a expert technical diagram converter. 
 Your task is to create a JSON Canvas diagram from a handwritten sketch.
 Make sure that you transcribe the text as accurately as possible.
-Only transcribe the text from the  prompts. Ignore all other text on the page including the title and any other text that is not part of the prompt.
-Do not include the text "SYSTEM PROMPT" or "USER PROMPT" in the JSON Canvas diagram.
 All nodes must have a "type" of "text" and a "text" value of "".
 All system prompts should be purple nodes and connect to a user prompt.
 All user prompts should be gray nodes and connect to an assistant response.
 All assistant nodes should be purple nodes.
+Green text represents metaprompts.
+Metaprompts connect to a system prompt or a user prompt but not both. 
+A green arrow should connect the metaprompt to the node that is modifying.
 If no assistant nodes is present, you should add one connected to the last user node.
+Only transcribe the text from the prompts and metaprompts. Ignore all other text on the page including the title and any other text that is not part of the prompt or metaprompt.
+Do not include the text "SYSTEM PROMPT" or "USER PROMPT" in the JSON Canvas diagram.
 Pay extra attention to the direction of the arrows in the sketch. The start of the arrow represents the "fromNode" and the wider end of the arrow represents the "toNode".
+Make sure the JSON Canvas output is always wrapped in <canvas> tags.
 
 EVERY node has a color must be specified in the node's JSON object as follows:
 
@@ -84,8 +89,9 @@ You have been tasked with creating a JSON Canvas diagram that shows the flow of 
 To add parameters to the JSON Canvas diagram, you need to add a new node and an edge connecting it to the existing node where the parameter is used.
 All parameter nodes have color "6" and are represented as empty text nodes.
 Make sure that the new parameter node does not overlap with any existing nodes.
+Make sure the JSON canvas is always wrapped in <canvas> tags and the parameters are wrapped in <parameters> tags.
 
-For example, the following parameters produced the following JSON Canvas diagram:
+For example, given the following JSON Canvas diagram and a list of paremeters:
 
 <canvas>
 {
@@ -112,6 +118,8 @@ Add the following parameters to the JSON Canvas diagram:
 <parameters>
 Variable "country" connects to node "c05f05c824cc0a17"
 </parameters>
+
+Return an updated JSON Canvas diagram like this:
 
 <canvas>
 {
@@ -156,11 +164,12 @@ const convertSketchToJSON = async function* (imageData: string, filename: string
   
   yield { message: 'Processing image...', status: 'running' };
 
-  const user_prompt = 'Create a JSON Canvas. Only output the JSON code.'
+  const user_prompt = 'Create a JSON Canvas from this sketch.'
   const response = await anthropic.messages.create({
     model: MODEL_NAME,
     max_tokens: 2048,
     system: system_prompt,
+    temperature: 0.0,
     messages: [{ role: "user", content: [
       { type: "image", source: { type: "base64", media_type: "image/png", data: imageData } },
       { type: "text", text: user_prompt }]}],
@@ -190,6 +199,7 @@ ${formatVariables(variablesByNode)}
       model: MODEL_NAME,
       max_tokens: 2048,
       system: variables_system_prompt,
+      temperature: 0.0,
       messages: [{ role: "user", content: [
         { type: "text", text: var_user_prompt }]}],
     });
@@ -268,13 +278,15 @@ const postProcessCannoliCanvas = (canvas: Graph): Graph => {
     leafNodes.delete(edge.fromNode);
   });
 
-  // Look for nodes with "assistant" text and color them purple
+  
   canvas.nodes.forEach((node) => {
     if (node.type == 'text') {
       if (node.text?.toLowerCase().trim() == 'assistant') {
+        // Look for nodes with "assistant" text and color them purple
         node.text = '';
         node.color = NodeColor.PURPLE;
-      } else if ((node.id in leafNodes) || (node.id in rootNodes)) {
+      } else if (((node.id in leafNodes) || (node.id in rootNodes)) && node.color != NodeColor.GREEN) {
+        // Make sure that all leaf nodes and root nodes are purple unless they are metaprompts
         node.color = NodeColor.PURPLE;
       }
     }
