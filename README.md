@@ -39,9 +39,9 @@ This should start a server at http://localhost:3000 with the Sketch2Canvas tool.
 The first time that you run the app you will need to give it permission to access your webcam. If you prefer you can also upload images without the webcam.
 ## Environment
 
-In order to use the app, you will need an Anthropic API key 
+In order to use the app, you will need an [Anthropic API key](https://docs.anthropic.com/en/api/getting-started). 
 
-Add you API to the  `.env.local` file in the root of the web app directory and restart the web app:
+Add your Anthropic API key to the  `.env.local` file in the root of the web app directory and restart the web app:
 
 ```ini
 ANTHROPIC_API_KEY=your-api-key
