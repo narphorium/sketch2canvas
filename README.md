@@ -84,6 +84,11 @@ When you open the web app you will see the option to either **Use Webcam** or **
  
 ### Text prompts
 
+<div>
+    <img src="docs/images/pros-cons-text.jpg" height="300" />
+    <img src="docs/images/pros-cons-canvas.png" height="300" />
+</div>
+
 If you have some handwritten prompts with examples like in the Anthropic Sample Prompts notebook, you can easily scan those into Obsidian to make them executable.
 
 1. Click the gear button to open the settings menu and make sure that **Use Cannoli format** is NOT checked for text-only prompts.
@@ -104,6 +109,11 @@ Claude doesn’t always get the size and position of the nodes exactly right so 
 
 ### Variables
 
+<div>
+    <img src="docs/images/clickbait-sketch.jpg" height="300" />
+    <img src="docs/images/clickbait-canvas.png" height="300" />
+</div>
+
 Often, prompts will take additional context provided by the user at runtime. We can use `$VAR` syntax in our sketches to specify where these values should be inserted in the prompt.
 
 Sketch2Canvas can automatically extract these variable into separate nodes in the canvas so that you can type in custom values or even link to other notes in your Obsidian vault to provide context to the prompt.
@@ -117,6 +127,11 @@ Sketch2Canvas can automatically extract these variable into separate nodes in th
 Make sure to fill in the variable nodes with values before running your prompt with Cannoli.
 
 ### Metaprompting
+
+<div>
+    <img src="docs/images/paper-summarizer-sketch.jpg" height="300" />
+    <img src="docs/images/paper-summarizer-canvas.png" height="300" />
+</div>
 
 This is where the power of AI-powered sketches really becomes clear. We can add green text to our sketches to provide descriptions of what a prompt should do and then let Claude write the prompt for use using a [Metaprompt](https://colab.research.google.com/drive/1SoAajN8CBYTl79VyTwxtxncfCWlHlyy9). This frees us to focus on the flow and purpose of the prompt without having to write everything out in detail.
 
